@@ -20,13 +20,6 @@ class TestNotionAuthentication:
         """Verify API token authenticates successfully"""
         if not os.getenv("NOTION_API_TOKEN"):
             pytest.skip("No API token in .env")
-
-        # We'll call a simple endpoint to verify auth works
-        # The /users/me endpoint would be perfect, but let's check docs
-        # For now, we'll use search (which we need anyway)
-
-        # This should succeed if auth is correct
-        # This should fail with 401 if auth is wrong
         result = client.search()
 
         assert result is not None
@@ -52,15 +45,61 @@ class TestNotionDatabase:
 
     def test_get_database(self, client, database_id):
         """
-        Retrieve a database by ID
-        Tutorial step: https://developers.notion.com/docs/create-a-notion-integration#step-2-share-a-database-with-your-integration
+        Retrieve a database and explore its data sources
+        New API: A database can have multiple data sources
         """
         database = client.get_database(database_id)
 
         assert database is not None
-        # assert database["object"] == "database"
-        # assert database["id"] == database_id.replace("-", "")  # Notion removes dashes
-        #
-        # print(f"\n✅ Database retrieved!")
-        # print(f"Title: {database.get('title', [{}])[0].get('plain_text', 'No title')}")
-        # print(f"Properties: {list(database.get('properties', {}).keys())}")
+        assert database["object"] == "database"
+
+        print(f"\n✅ Database retrieved!")
+        print(f"Database ID: {database['id']}")
+
+        # New API: databases have data_sources array
+        data_sources = database.get("data_sources", [])
+        print(f"\nData sources: {len(data_sources)}")
+
+        for i, ds in enumerate(data_sources):
+            print(f"\n  Data Source {i+1}:")
+            print(f"    ID: {ds.get('id')}")
+            print(f"    Name: {ds.get('name', 'Unnamed')}")
+            print(f"    Type: {ds.get('type')}")
+
+    def test_query_database_proper_flow(self, client, database_id):
+        """
+        Proper flow: Get database → Extract data source ID → Query data source
+        """
+        # Step 1: Get database
+        database = client.get_database(database_id)
+
+        # Step 2: Extract data source ID
+        data_sources = database.get("data_sources", [])
+        assert len(data_sources) > 0, "Database has no data sources"
+
+        data_source_id = data_sources[0]["id"]
+        print(f"\n📊 Using data source: {data_source_id}")
+
+        # Step 3: Query the data source
+        results = client.query_data_source(data_source_id)
+
+        assert results is not None
+        assert "results" in results
+
+        print(f"✅ Found {len(results['results'])} items")
+
+        if results["results"]:
+            first = results["results"][0]
+            print(
+                f"\nFirst item properties: {list(first.get('properties', {}).keys())}"
+            )
+
+    def test_query_database_convenience_method(self, client, database_id):
+        """Test the convenience method that handles data source lookup"""
+        results = client.query_database(database_id)
+
+        assert results is not None
+        assert "results" in results
+
+        print(f"\n✅ Convenience method works!")
+        print(f"Found {len(results['results'])} items")
